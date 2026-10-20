@@ -12,18 +12,28 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-database_url = make_url(os.getenv("DATABASE_URL") or "sqlite:///data/homeplate.db")
-if database_url.drivername not in ("sqlite", "sqlite+pysqlite"):
-    raise ValueError("第一版使用 SQLite；请移除旧 DATABASE_URL 或改为 sqlite:///data/homeplate.db。")
+# 适配 Vercel：线上用 /tmp，本地用默认
+if os.environ.get("VERCEL"):
+    database_url = os.getenv("DATABASE_URL", "sqlite:////tmp/homeplate.db")
+else:
+    database_url = os.getenv("DATABASE_URL", "sqlite:///data/homeplate.db")
+
+database_url = make_url(database_url)
+
+# 保留你原有的校验逻辑
+if database_url.drivername not in ("sqlite", "sqlite-pysqlite"):
+    raise ValueError("第一版使用 SQLite，请移除旧 DATABASE_URL 或改为 sqlite:///data/homeplate.db。")
 if not database_url.database or database_url.database == ":memory:":
     raise ValueError("请配置 SQLite 数据库文件路径，以便重启后保留数据。")
 
 database_path = Path(database_url.database)
+
+# Vercel 的 /tmp 已存在且是绝对路径，本地相对路径才需要拼接和 mkdir
 if not database_path.is_absolute():
     database_path = BASE_DIR / database_path
-database_path = database_path.resolve()
-database_path.parent.mkdir(parents=True, exist_ok=True)
-database_url = database_url.set(database=database_path.as_posix())
+    database_path = database_path.resolve()
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    database_url = database_url.set(database=database_path.as_posix())
 
 engine = create_engine(
     database_url,
